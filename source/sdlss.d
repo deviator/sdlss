@@ -143,7 +143,8 @@ void fillTag(T)(Tag parent, auto ref const T st)
 {
     static void addValue(X)(Tag ct, X val)
     {
-        static if (isNumeric!X)
+        //static if (isNumeric!X) // WTF? on windows dmd-nightly (2.080) isNumeric!bool is true
+        static if (isNumeric!X && !is(Unqual!X == bool))
             ct.add(Value(cast(Unqual!(Signed!X))val));
         else static if (is(X == const(ubyte)[]))
             ct.add(Value(cast(ubyte[])val.dup));
