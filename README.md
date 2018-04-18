@@ -1,4 +1,4 @@
-## SDLang struct serialize
+## SDLang struct serialize [![Build Status](https://travis-ci.org/deviator/sdlss.svg?branch=master)](https://travis-ci.org/deviator/sdlss)
 
 ### Rules
 
