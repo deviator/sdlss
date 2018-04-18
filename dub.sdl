@@ -1,0 +1,7 @@
+name "sdlss"
+description "SDLang struct serialize"
+authors "Oleg Butko"
+copyright "Copyright © 2018, Oleg Butko"
+license "MIT"
+targetType "library"
+dependency "sdlang-d" version="~>0.10.2"

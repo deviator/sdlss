@@ -1,0 +1,4 @@
+name "example"
+dependency "sdlss" path=".."
+targetType "executable"
+mainSourceFile "app.d"

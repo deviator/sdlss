@@ -1,0 +1,17 @@
+.dub
+docs.json
+__dummy.html
+docs/
+sdlss.so
+sdlss.dylib
+sdlss.dll
+sdlss.a
+sdlss.lib
+sdlss-test-*
+*.exe
+*.o
+*.obj
+*.lst
+example/example
+example-test-application
+dub.selections.json

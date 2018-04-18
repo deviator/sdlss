@@ -1,0 +1,13 @@
+com {
+	dev "/dev/ttyUSB0"
+	baudrate 19200
+	mode "8N1"
+}
+data {
+	name "first"
+	signal 1 1 2 3 5
+}
+data {
+    name "second"
+    signal 1 4 8
+}
