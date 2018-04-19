@@ -36,6 +36,17 @@ T buildStruct(T)(Tag tag) if (is(T==struct))
     return ret;
 }
 
+bool isUserStruct(T)() @property
+{
+    return is(T == struct) &&
+           !is(T == Date) &&
+           !is(T == SysTime) &&
+           !is(T == DateTime) &&
+           !is(T == DateTimeFrac) &&
+           !is(T == DateTimeFracUnknownZone) &&
+           !is(T == Duration);
+}
+
 ///
 void fillStruct(T)(ref T st, Tag[] tags...)
 {
@@ -44,13 +55,7 @@ void fillStruct(T)(ref T st, Tag[] tags...)
     static if (isArray!T)
         alias Elem = Unqual!(ElementType!T);
 
-    static if (is(T == struct) &&
-              !is(T == Date) &&
-              !is(T == SysTime) &&
-              !is(T == DateTime) &&
-              !is(T == DateTimeFrac) &&
-              !is(T == DateTimeFracUnknownZone) &&
-              !is(T == Duration))
+    static if (isUserStruct!T)
     {
         if (tags.length == 0) return;
         auto tag = tags[$-1];
@@ -70,7 +75,7 @@ void fillStruct(T)(ref T st, Tag[] tags...)
 
         if (tags.length == 0) return;
 
-        static if (is(Elem == struct))
+        static if (isUserStruct!Elem)
             foreach (ct; tags)
             {
                 if (ct.tags.length)
@@ -86,7 +91,7 @@ void fillStruct(T)(ref T st, Tag[] tags...)
     else static if (isStaticArray!T)
     {
         if (tags.length == 0) return;
-        static if (is(Elem == struct))
+        static if (isUserStruct!Elem)
         {
             foreach (i, ct; tags)
             {
@@ -385,10 +390,7 @@ unittest
     assert(st.intValue == [3,5,7,8]);
     assert(st.doubleValue == [0.0]);
     assert(st.stringValue == ["ok", "da", "net"]);
-    pragma(msg, "issue #1");
-    /+ See issue #1 
     assert(st.durArr == [123.msecs, 5.seconds, 1.minutes]);
-     +/
     assert(st.foo == [initialFoo]);
 }
 
