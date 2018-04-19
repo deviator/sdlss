@@ -159,14 +159,14 @@ void fillTag(T)(Tag parent, auto ref const T st)
 
     foreach (i, ref f; st.tupleof)
     {
-        alias FT = typeof(f);
+        alias FT = Unqual!(typeof(f));
         enum name = __traits(identifier, st.tupleof[i]);
 
-        static if (is(FT == struct))
+        static if (isUserStruct!FT)
             fillTag(new Tag(parent, "", name), f);
         else static if (isArray!FT && !isSomeString!FT && !(is(Unqual!FT == const(ubyte)[])))
         {
-            static if (is(ElementType!FT == struct))
+            static if (isUserStruct!(Unqual!(ElementType!FT)))
             {
                 if (f.length)
                     foreach (v; f)
@@ -431,13 +431,25 @@ unittest
     auto tt = Bar(
         [false, true, false, false, true],
         [1, 4, 8, 15, 16, 23, 42],
-        [], ["ok", "da"], [/+BUG#1+/], [
-            Foo(true, 42, 0.0, "hello"),
-            Foo(false, 13, 1.1, "world", [0x1, 0x2, 0xa, 0xff])
+        [], ["ok", "da"], [1.minutes, 2.seconds, 5.msecs],
+        [Foo(true, 42, 0.0, "hello"),
+         Foo(false, 13, 1.1, "world", [0x1, 0x2, 0xa, 0xff])
         ]
     );
 
-    auto rr = buildStruct!Bar(buildTag(tt));
+    assert(tt == buildStruct!Bar(buildTag(tt)));
+}
 
-    assert(tt == rr);
+unittest
+{
+    struct Dt {
+        DateTimeFrac[] dt;
+    }
+
+    auto tt = Dt([DateTimeFrac(DateTime(2010, 02, 03, 12, 18, 0), 5.msecs),
+                  DateTimeFrac(DateTime(2018, 04, 04, 10, 15, 30)),
+    ]);
+
+    assert(tt == buildStruct!Dt(`dt 2010/02/03 12:18:00.005 2018/04/04 10:15:30`.parseSource));
+    assert(tt == buildStruct!Dt(buildTag(tt)));
 }
