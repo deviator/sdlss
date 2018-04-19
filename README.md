@@ -1,5 +1,6 @@
 ## SDLang struct serialize 
 [![Build Status](https://travis-ci.org/deviator/sdlss.svg?branch=master)](https://travis-ci.org/deviator/sdlss)
+[![Build status](https://ci.appveyor.com/api/projects/status/u20o6l7v7x33hj9r/branch/master?svg=true)](https://ci.appveyor.com/project/deviator/sdlss/branch/master)
 [![codecov](https://codecov.io/gh/deviator/sdlss/branch/master/graph/badge.svg)](https://codecov.io/gh/deviator/sdlss)
 
 ### Rules
