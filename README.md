@@ -9,6 +9,7 @@
     Duration, ubyte[], structs and they arrays for fields type
 * enum converts to strings
 * byte, ubyte, short, ushort converts to int
+* float and real converts to double
 * attributes not used (see TODO)
 * no value in sdl set default struct field value
 * empty value in sdl for arrays set struct field to []

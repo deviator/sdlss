@@ -9,6 +9,7 @@ import std.traits;
 import std.range : ElementType;
 import std.datetime;
 import std.conv;
+import std.string : toLower;
 
 ///
 T readStruct(T)(string fname)
@@ -56,6 +57,8 @@ bool isSerializableArray(T)() @property
            !(is(Unqual!T == const(ubyte)[]));
 }
 
+alias FloatingType = double;
+
 template maskType(T)
 {
     static if (is(T == enum))
@@ -66,6 +69,8 @@ template maskType(T)
                    is(T == ushort)
     )
         alias maskType = int;
+    else static if(isFloatingPoint!T)
+        alias maskType = FloatingType;
     else alias maskType = T;
 }
 
@@ -75,6 +80,19 @@ bool isSerializableDynamicArray(T)() @property
 ///
 void fillStruct(OT)(ref OT st, Tag[] tags...)
 {
+    static void getValue(X, OX)(ref OX f, auto ref const Value val)
+    {
+        static if (isFloatingPoint!OX)
+        {
+            if (val.type == typeid(string) && val.get!string.idup.toLower == "nan")
+                f = OX.nan;
+            else if (val.type == typeid(X))
+                f = val.get!X.to!OX;
+            else { /+ TODO: warning +/ }
+        }
+        else f = val.get!X.to!OX;
+    }
+
     import std.array;
 
     alias T = maskType!OT;
@@ -102,44 +120,37 @@ void fillStruct(OT)(ref OT st, Tag[] tags...)
             else { /+ TODO something +/ }
         }
     }
-    else static if (isSerializableDynamicArray!T)
+    else static if (isSerializableArray!T)
     {
         static if (isUserStruct!Elem)
-            foreach (ct; tags)
-            {
-                if (ct.tags.length)
-                    st ~= buildStruct!Elem(ct);
-            }
-        else
-        {
-            if (tags.length > 1) { /+ TODO warning +/ }
-            foreach (v; tags[$-1].values) // get last tag
-            {
-                if (v.type == typeid(Elem))
-                    st ~= v.get!Elem.to!OElem;
-                else { /+ TODO warning: unexpected value type +/ }
-            }
-        }
-    }
-    else static if (isStaticArray!T)
-    {
-        static if (isUserStruct!Elem)
-        {
             foreach (i, ct; tags)
             {
-                if (i >= st.length) break;
-                fillStruct(ct, st[i]);
+                if (ct.tags.length)
+                {
+                    static if (isStaticArray!T)
+                    {
+                        if (i >= st.length) /+ TODO warning +/ break;
+                        fillStruct(ct, st[i]);
+                    }
+                    else st ~= buildStruct!Elem(ct);
+                }
             }
-        }
         else
         {
             if (tags.length > 1) { /+ TODO warning +/ }
             foreach (i, v; tags[$-1].values) // get last tag
             {
-                if (i >= st.length) break;
-                if (v.type == typeid(Elem))
-                    st[i] = v.get!Elem.to!OElem;
-                else { /+ TODO warning: unexpected value type +/ }
+                static if (isStaticArray!T)
+                {
+                    if (i >= st.length) /+ TODO warning +/ break;
+                    getValue!(Elem, OElem)(st[i], v);
+                }
+                else
+                {
+                    OElem tmp;
+                    getValue!(Elem, OElem)(tmp, v);
+                    st ~= tmp;
+                }
             }
         }
     }
@@ -147,7 +158,7 @@ void fillStruct(OT)(ref OT st, Tag[] tags...)
     {
         if (tags.length > 1) { /+ TODO warning +/ }
         if (tags[$-1].values.length == 0) return; // no values (TODO warning?)
-        st = tags[$-1].values[0].get!T().to!OT;
+        getValue!(T, OT)(st, tags[$-1].values[0]);
     }
 }
 
@@ -183,11 +194,14 @@ void fillTag(T)(Tag parent, auto ref const T st)
     {
         static if (is(X == enum))
             ct.add(Value(val.to!string));
-        //static if (isNumeric!X) // WTF? on windows dmd-nightly (2.080) isNumeric!bool is true
         else static if (isFloatingPoint!X)
-            ct.add(Value(cast(double)val));
+        {
+            if (val == val) ct.add(Value(val.to!FloatingType));
+            else ct.add(Value("nan"));
+        }
+        //static if (isNumeric!X) // WTF? on windows dmd-nightly (2.080) isNumeric!bool is true
         else static if (isNumeric!X && !is(Unqual!X == bool))
-            ct.add(Value(cast(int)val));
+            ct.add(Value(val.to!int));
         else static if (is(X == const(ubyte)[]))
             ct.add(Value(cast(ubyte[])val.dup));
         else
@@ -534,4 +548,31 @@ unittest
     }
 
     assert(TFoo.init.buildTag.toSDLDocument.parseSource.buildStruct!TFoo == TFoo.init);
+}
+
+unittest
+{
+    struct TFoo
+    {
+        float x;
+    }
+
+    assert(TFoo.init.x is float.nan);
+    auto v = TFoo.init.buildTag.toSDLDocument.parseSource.buildStruct!TFoo.x;
+    assert(v != v); // nan
+}
+
+unittest
+{
+    struct TFoo { float[] x; }
+
+    assert(TFoo.init.buildTag.toSDLDocument.parseSource.buildStruct!TFoo == TFoo.init);
+
+    auto tt = TFoo([1, 2, float.nan, 3]);
+    auto nt = tt.buildTag.toSDLDocument.parseSource.buildStruct!TFoo;
+    assert(nt.x.length == 4);
+    assert(nt.x[0] == 1);
+    assert(nt.x[1] == 2);
+    assert(nt.x[2] != nt.x[2]);
+    assert(nt.x[3] == 3);
 }
