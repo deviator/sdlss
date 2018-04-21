@@ -8,6 +8,7 @@ import std.meta;
 import std.traits;
 import std.range : ElementType;
 import std.datetime;
+import std.conv;
 
 ///
 T readStruct(T)(string fname)
@@ -47,34 +48,62 @@ bool isUserStruct(T)() @property
            !is(T == Duration);
 }
 
+bool isSerializableArray(T)() @property
+{
+    return isArray!T &&
+           !isSomeString!T &&
+           !(is(Unqual!T == ubyte[])) &&
+           !(is(Unqual!T == const(ubyte)[]));
+}
+
+template maskType(T)
+{
+    static if (is(T == enum))
+        alias maskType = string;
+    else static if(is(T == byte) ||
+                   is(T == ubyte) ||
+                   is(T == short) ||
+                   is(T == ushort)
+    )
+        alias maskType = int;
+    else alias maskType = T;
+}
+
+bool isSerializableDynamicArray(T)() @property
+{ return isDynamicArray!T && isSerializableArray!T; }
+
 ///
-void fillStruct(T)(ref T st, Tag[] tags...)
+void fillStruct(OT)(ref OT st, Tag[] tags...)
 {
     import std.array;
 
+    alias T = maskType!OT;
+
     static if (isArray!T)
-        alias Elem = Unqual!(ElementType!T);
+    {
+        alias OElem = Unqual!(ElementType!T);
+        alias Elem = maskType!(Unqual!(ElementType!T));
+    }
+
+    static if (isSerializableDynamicArray!T)
+        st = [];
+
+    if (tags.length == 0) return;
 
     static if (isUserStruct!T)
     {
-        if (tags.length == 0) return;
-        auto tag = tags[$-1];
+        if (tags.length > 1) { /+ TODO warning +/ }
+        auto tag = tags[$-1]; // get last tag
         foreach (i, ref f; st.tupleof)
         {
             enum name = __traits(identifier, st.tupleof[i]);
             if (name in tag.tags)
                 fillStruct(f, tag.tags[name].array);
+            else { /+ TODO something +/ }
         }
     }
-    else static if (isDynamicArray!T &&
-                    !isSomeString!T &&
-                    !(is(Unqual!T == ubyte[]))
-                   )
+    else static if (isSerializableDynamicArray!T)
     {
-        st = [];
-
-        if (tags.length == 0) return;
-
         static if (isUserStruct!Elem)
             foreach (ct; tags)
             {
@@ -84,13 +113,16 @@ void fillStruct(T)(ref T st, Tag[] tags...)
         else
         {
             if (tags.length > 1) { /+ TODO warning +/ }
-            foreach (v; tags[$-1].values)
-                st ~= v.get!Elem;
+            foreach (v; tags[$-1].values) // get last tag
+            {
+                if (v.type == typeid(Elem))
+                    st ~= v.get!Elem.to!OElem;
+                else { /+ TODO warning: unexpected value type +/ }
+            }
         }
     }
     else static if (isStaticArray!T)
     {
-        if (tags.length == 0) return;
         static if (isUserStruct!Elem)
         {
             foreach (i, ct; tags)
@@ -102,19 +134,20 @@ void fillStruct(T)(ref T st, Tag[] tags...)
         else
         {
             if (tags.length > 1) { /+ TODO warning +/ }
-            foreach (i, v; tags[$-1].values)
+            foreach (i, v; tags[$-1].values) // get last tag
             {
                 if (i >= st.length) break;
-                st[i] = v.get!Elem;
+                if (v.type == typeid(Elem))
+                    st[i] = v.get!Elem.to!OElem;
+                else { /+ TODO warning: unexpected value type +/ }
             }
         }
     }
     else
     {
-        if (tags.length == 0) return;
         if (tags.length > 1) { /+ TODO warning +/ }
-        if (tags[$-1].values.length == 0) return;
-        st = tags[$-1].values[0].get!T();
+        if (tags[$-1].values.length == 0) return; // no values (TODO warning?)
+        st = tags[$-1].values[0].get!T().to!OT;
     }
 }
 
@@ -148,9 +181,13 @@ void fillTag(T)(Tag parent, auto ref const T st)
 {
     static void addValue(X)(Tag ct, X val)
     {
+        static if (is(X == enum))
+            ct.add(Value(val.to!string));
         //static if (isNumeric!X) // WTF? on windows dmd-nightly (2.080) isNumeric!bool is true
-        static if (isNumeric!X && !is(Unqual!X == bool))
-            ct.add(Value(cast(Unqual!(Signed!X))val));
+        else static if (isFloatingPoint!X)
+            ct.add(Value(cast(double)val));
+        else static if (isNumeric!X && !is(Unqual!X == bool))
+            ct.add(Value(cast(int)val));
         else static if (is(X == const(ubyte)[]))
             ct.add(Value(cast(ubyte[])val.dup));
         else
@@ -164,7 +201,7 @@ void fillTag(T)(Tag parent, auto ref const T st)
 
         static if (isUserStruct!FT)
             fillTag(new Tag(parent, "", name), f);
-        else static if (isArray!FT && !isSomeString!FT && !(is(Unqual!FT == const(ubyte)[])))
+        else static if (isSerializableArray!FT)
         {
             static if (isUserStruct!(Unqual!(ElementType!FT)))
             {
@@ -452,4 +489,49 @@ unittest
 
     assert(tt == buildStruct!Dt(`dt 2010/02/03 12:18:00.005 2018/04/04 10:15:30`.parseSource));
     assert(tt == buildStruct!Dt(buildTag(tt)));
+}
+
+unittest
+{
+    enum Type
+    {
+        one,
+        two,
+        three,
+    }
+
+    struct TFoo
+    {
+        Type type = Type.two;
+    }
+
+    assert(TFoo.init.buildTag.toSDLDocument.parseSource.buildStruct!TFoo == TFoo.init);
+}
+
+unittest
+{
+    enum Type
+    {
+        one,
+        two,
+        three,
+    }
+
+    struct TFoo
+    {
+        Type[] type = [Type.two, Type.three];
+    }
+
+    assert(TFoo.init.buildTag.toSDLDocument.parseSource.buildStruct!TFoo == TFoo.init);
+}
+
+unittest
+{
+    struct TFoo
+    {
+        short a=10, b=12;
+        byte x=122, y=100;
+    }
+
+    assert(TFoo.init.buildTag.toSDLDocument.parseSource.buildStruct!TFoo == TFoo.init);
 }

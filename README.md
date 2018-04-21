@@ -7,7 +7,9 @@
 
 * use bool, string, int, double, Date, DateTimeFrac,
     Duration, ubyte[], structs and they arrays for fields type
-* not use attributes (see TODO)
+* enum converts to strings
+* byte, ubyte, short, ushort converts to int
+* attributes not used (see TODO)
 * no value in sdl set default struct field value
 * empty value in sdl for arrays set struct field to []
 * structs arrays define as duplicate tags
