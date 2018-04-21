@@ -88,6 +88,10 @@ void fillStruct(OT)(ref OT st, Tag[] tags...)
                 f = OX.nan;
             else if (val.type == typeid(X))
                 f = val.get!X.to!OX;
+            else if (val.type == typeid(int))
+                f = val.get!long.to!OX;
+            else if (val.type == typeid(long))
+                f = val.get!long.to!OX;
             else { /+ TODO: warning +/ }
         }
         else f = val.get!X.to!OX;
@@ -103,8 +107,7 @@ void fillStruct(OT)(ref OT st, Tag[] tags...)
         alias Elem = maskType!(Unqual!(ElementType!T));
     }
 
-    static if (isSerializableDynamicArray!T)
-        st = [];
+    static if (isSerializableDynamicArray!T) st = [];
 
     if (tags.length == 0) return;
 
@@ -575,4 +578,19 @@ unittest
     assert(nt.x[1] == 2);
     assert(nt.x[2] != nt.x[2]);
     assert(nt.x[3] == 3);
+}
+
+unittest
+{
+    struct TFoo
+    {
+        float a;
+        double b;
+    }
+
+    auto tt = `
+    a 10
+    b 12`.parseSource.buildStruct!TFoo;
+
+    assert(tt == TFoo(10,12));
 }
