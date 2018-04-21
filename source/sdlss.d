@@ -63,12 +63,15 @@ template maskType(T)
 {
     static if (is(T == enum))
         alias maskType = string;
-    else static if(is(T == byte) ||
-                   is(T == ubyte) ||
-                   is(T == short) ||
-                   is(T == ushort)
+    else static if (is(T == byte) ||
+                    is(T == ubyte) ||
+                    is(T == short) ||
+                    is(T == ushort) ||
+                    is(T == uint)
     )
         alias maskType = int;
+    else static if (is(T == ulong))
+        alias maskType = long;
     else static if(isFloatingPoint!T)
         alias maskType = FloatingType;
     else alias maskType = T;
@@ -593,4 +596,16 @@ unittest
     b 12`.parseSource.buildStruct!TFoo;
 
     assert(tt == TFoo(10,12));
+}
+
+unittest
+{
+    struct TFoo { uint[] x = [1,2,3]; }
+    assert(TFoo.init.buildTag.toSDLDocument.parseSource.buildStruct!TFoo == TFoo.init);
+}
+
+unittest
+{
+    struct TFoo { ulong[] x = [1,2,3]; }
+    assert(TFoo.init.buildTag.toSDLDocument.parseSource.buildStruct!TFoo == TFoo.init);
 }
