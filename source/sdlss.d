@@ -53,8 +53,10 @@ bool isSerializableArray(T)() @property
 {
     return isArray!T &&
            !isSomeString!T &&
+           !(is(Unqual!T == char[])) &&
+           !(is(Unqual!T : const(char)[])) &&
            !(is(Unqual!T == ubyte[])) &&
-           !(is(Unqual!T == const(ubyte)[]));
+           !(is(Unqual!T : const(ubyte)[]));
 }
 
 alias FloatingType = double;
@@ -121,9 +123,12 @@ void fillStruct(OT)(ref OT st, Tag[] tags...)
         foreach (i, ref f; st.tupleof)
         {
             enum name = __traits(identifier, st.tupleof[i]);
-            if (name in tag.tags)
-                fillStruct(f, tag.tags[name].array);
-            else { /+ TODO something +/ }
+            static if (name != "this") // const(void)* context ptr
+            {
+                if (name in tag.tags)
+                    fillStruct(f, tag.tags[name].array);
+                else { /+ TODO something +/ }
+            }
         }
     }
     else static if (isSerializableArray!T)
@@ -219,29 +224,32 @@ void fillTag(T)(Tag parent, auto ref const T st)
         alias FT = Unqual!(typeof(f));
         enum name = __traits(identifier, st.tupleof[i]);
 
-        static if (isUserStruct!FT)
-            fillTag(new Tag(parent, "", name), f);
-        else static if (isSerializableArray!FT)
+        static if (name != "this") // const(void)* context ptr
         {
-            static if (isUserStruct!(Unqual!(ElementType!FT)))
+            static if (isUserStruct!FT)
+                fillTag(new Tag(parent, "", name), f);
+            else static if (isSerializableArray!FT)
             {
-                if (f.length)
-                    foreach (v; f)
-                        fillTag(new Tag(parent, "", name), v);
+                static if (isUserStruct!(Unqual!(ElementType!FT)))
+                {
+                    if (f.length)
+                        foreach (v; f)
+                            fillTag(new Tag(parent, "", name), v);
+                    else
+                        new Tag(parent, "", name);
+                }
                 else
-                    new Tag(parent, "", name);
+                {
+                    auto ct = new Tag(parent, "", name);
+                    foreach (v; f)
+                        addValue(ct, v);
+                }
             }
             else
             {
                 auto ct = new Tag(parent, "", name);
-                foreach (v; f)
-                    addValue(ct, v);
+                addValue(ct, f);
             }
-        }
-        else
-        {
-            auto ct = new Tag(parent, "", name);
-            addValue(ct, f);
         }
     }
 }
@@ -607,5 +615,180 @@ unittest
 unittest
 {
     struct TFoo { ulong[] x = [1,2,3]; }
+    assert(TFoo.init.buildTag.toSDLDocument.parseSource.buildStruct!TFoo == TFoo.init);
+}
+
+version (unittest)
+{
+    mixin template FieldsAndAccess(T, E)
+        if (is(E == enum))
+    {
+        alias Field = T;
+        alias Enum = E;
+
+        import std.traits: EnumMembers;
+        import std.conv : to;
+        import std.algorithm : map;
+        import std.string : join, format;
+        import std.array : array;
+
+        private static pure string buildFields()
+        {
+            return [EnumMembers!E]
+                        .map!(a=>format("Field %s;", a.to!string))
+                        .array.join("\n");
+        }
+
+        mixin(buildFields());
+
+        static bool isField(string f) pure nothrow @nogc
+        { return is(typeof(f.to!E)); }
+
+        ref inout(T) opIndex(E v) inout
+        {
+            final switch(v)
+                foreach (e; EnumMembers!E)
+                    case e: return mixin(e.to!string);
+        }
+    }
+
+}
+
+unittest
+{
+    enum ASubject { foo, bar, baz }
+    enum BSubject { vo, cu }
+
+    static struct Limit { float min, max; }
+
+    static struct ALimits { mixin FieldsAndAccess!(Limit, ASubject); }
+    static struct BLimits { mixin FieldsAndAccess!(Limit, BSubject); }
+
+    static struct DiffRule
+    {
+        enum Type
+        {
+            ignore = "ignore",
+            value  = "value",
+            strict = "strict",
+        }
+        Type type;
+        float v = 0.0;
+
+        static DiffRule ignore() @property { return DiffRule(Type.ignore); }
+        static DiffRule value(float v) { return DiffRule(Type.value, v); }
+        static DiffRule strict() @property { return DiffRule(Type.strict); }
+    }
+
+    static struct ADiff
+    {
+        DiffRule a = DiffRule.strict; ///
+        DiffRule b = DiffRule.value(0.01); ///
+        DiffRule c = DiffRule.value(1); ///
+        DiffRule d = DiffRule.value(0.001); ///
+        DiffRule e = DiffRule.strict; ///
+    }
+
+    static struct BDiff
+    {
+        DiffRule a = DiffRule.strict; ///
+        DiffRule b = DiffRule.value(5); ///
+        DiffRule c = DiffRule.value(1); ///
+        DiffRule d = DiffRule.strict; ///
+        DiffRule e = DiffRule.strict; ///
+        DiffRule f = DiffRule.value(1); ///
+        DiffRule g = DiffRule.strict; ///
+    }
+
+    static struct BDescription
+    {
+        ulong id;
+        ushort mid = 1;
+        string name = "строка utf-8";
+        short hours = 1;
+        size_t sid;
+        float direction = 1;
+    }
+
+    static struct CommonSettings
+    {
+    }
+
+    static struct StorageSettings
+    {
+        string dbname="./db.sqlite";
+        uint updTime = 5 * 60;
+    }
+
+    static struct MonitorSettings
+    {
+        string port = "/dev/ttyUSB0";
+        int baudrate = 9600;
+    }
+
+    static struct FrontendSettings
+    {
+        uint count = 100;
+        uint maxCount = 2000;
+    }
+
+    static struct Serial { ushort party, number; }
+
+    static struct ModbusSlaveSettings
+    {
+        string port = "/dev/ttyUSB1";
+        int baudrate = 9600;
+        string mode = "8N1";
+        int deviceNo = 4;
+        Serial serial = Serial(1,1);
+    }
+
+    enum PIN_COUNT = 4;
+
+    static struct RelayOutSettings
+    {
+        uint[PIN_COUNT] pins = [17, 23, 26, 27];
+        string cmd_hi = `raspi-gpio set %s op dh`;
+        string cmd_lo = `raspi-gpio set %s op dl`;
+    }
+
+    static struct AppSettings
+    {
+        CommonSettings common;
+        StorageSettings storage;
+        MonitorSettings monitor;
+        FrontendSettings frontend;
+        ModbusSlaveSettings mbslave;
+        RelayOutSettings relayout;
+    }
+
+    static struct LBT { mixin FieldsAndAccess!(float, BSubject); }
+
+    static struct LSettings
+    {
+        static struct Limits
+        {
+            ALimits al;
+            BLimits bl;
+        }
+
+        static struct DiffRules
+        {
+            ADiff ar;
+            BDiff br;
+        }
+
+        Limits limits;
+        DiffRules diff;
+        LBT lbt;
+    }
+
+    static struct TFoo
+    {
+        LSettings[] settings;
+        BDescription[] description;
+        AppSettings apps;
+    }
+
     assert(TFoo.init.buildTag.toSDLDocument.parseSource.buildStruct!TFoo == TFoo.init);
 }
